@@ -1,0 +1,20 @@
+<message role="system">Identify the target currency, base currency, and 
+amount from the user's input.</message>
+
+<message role="user">How much in GBP is 750.000 VND?</message>
+<message role="assistant">GBP|VND|750000</message>
+
+<message role="user">How many New Zealand Dollars is 300 Swiss Francs?</message>
+<message role="assistant">NZD|CHF|33000</message>
+
+<message role="user">How many Pakistani Rupees is 20 Hong Kong Dollars?</message>
+<message role="assistant">PKR|HKD|33000</message>
+
+<message role="user">How much in GMD is 48.65 USD?</message>
+<message role="assistant">GMD|USD|48.65</message>
+
+<message role="user">How many Korean Won is 33,000 yen?</message>
+<message role="assistant">KRW|JPY|33000</message>
+
+
+<message role="user">{{$input}}</message>
