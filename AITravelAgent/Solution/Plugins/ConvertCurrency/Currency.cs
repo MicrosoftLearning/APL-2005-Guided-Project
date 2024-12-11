@@ -32,8 +32,8 @@ public class Currency
         currencyDictionary = [];
 
         string filePath = Path.Combine(
-            Directory.GetCurrentDirectory(), 
-            "Plugins\\ConvertCurrency\\currencies.txt"
+            Directory.GetCurrentDirectory(),
+             "Plugins", "ConvertCurrency", "currencies.txt"
         );
         
         if (!File.Exists(filePath))
