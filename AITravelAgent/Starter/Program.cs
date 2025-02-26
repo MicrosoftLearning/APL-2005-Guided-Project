@@ -1,26 +1,24 @@
-﻿using System.Text;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Microsoft.SemanticKernel.Plugins.Core;
-#pragma warning disable SKEXP0050 
-#pragma warning disable SKEXP0060
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
 
-string yourDeploymentName = "";
-string yourEndpoint = "";
-string yourApiKey = "";
+string filePath = Path.GetFullPath("../appsettings.json");
+var config = new ConfigurationBuilder()
+    .AddJsonFile(filePath)
+    .Build();
 
+// Set your values in appsettings.json
+string modelId = config["modelId"]!;
+string endpoint = config["endpoint"]!;
+string apiKey = config["apiKey"]!;
+
+// Create a kernel with Azure OpenAI chat completion
 var builder = Kernel.CreateBuilder();
-builder.Services.AddAzureOpenAIChatCompletion(
-    yourDeploymentName,
-    yourEndpoint,
-    yourApiKey,
-    "gpt-35-turbo-16k");
-var kernel = builder.Build();
+builder.AddAzureOpenAIChatCompletion(modelId, endpoint, apiKey);
 
-// Note: ChatHistory isn't working correctly as of SemanticKernel v 1.4.0
-StringBuilder chatHistory = new();
-
-kernel.ImportPluginFromType<ConversationSummaryPlugin>();
-var prompts = kernel.ImportPluginFromPromptDirectory("Prompts");
+// Build the kernel
+Kernel kernel = builder.Build();
+var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 

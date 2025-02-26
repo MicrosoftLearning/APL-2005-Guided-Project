@@ -1,99 +1,79 @@
-﻿using System.Text;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Microsoft.SemanticKernel.Plugins.Core;
-#pragma warning disable SKEXP0050 
-#pragma warning disable SKEXP0060
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
 
-string yourDeploymentName = "";
-string yourEndpoint = "";
-string yourApiKey = "";
+string filePath = Path.GetFullPath("../appsettings.json");
+var config = new ConfigurationBuilder()
+    .AddJsonFile(filePath)
+    .Build();
 
+// Set your values in appsettings.json
+string modelId = config["modelId"]!;
+string endpoint = config["endpoint"]!;
+string apiKey = config["apiKey"]!;
+
+// Create a kernel with Azure OpenAI chat completion
 var builder = Kernel.CreateBuilder();
-builder.Services.AddAzureOpenAIChatCompletion(
-    yourDeploymentName,
-    yourEndpoint,
-    yourApiKey,
-    "gpt-35-turbo-16k");
-var kernel = builder.Build();
+builder.AddAzureOpenAIChatCompletion(modelId, endpoint, apiKey);
 
-kernel.ImportPluginFromType<CurrencyConverter>();
-kernel.ImportPluginFromType<ConversationSummaryPlugin>();
-var prompts = kernel.ImportPluginFromPromptDirectory("Prompts");
+// Build the kernel
+Kernel kernel = builder.Build();
+var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
-// Note: ChatHistory isn't working correctly as of SemanticKernel v 1.4.0
-StringBuilder chatHistory = new();
-
-OpenAIPromptExecutionSettings settings = new()
+// Solution code
+kernel.ImportPluginFromType<CurrencyConverterPlugin>();
+kernel.ImportPluginFromType<FlightBookingPlugin>();
+OpenAIPromptExecutionSettings promptExecutionSettings = new() 
 {
-    ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
+    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
 };
 
-string input;
+string hbprompt = """
+    <message role="system">Instructions: Before providing the the user with a travel itenerary, ask how many days their trip is</message>
+    <message role="user">I'm going to {{city}}. Can you create an itinerary for me?</message>
+    <message role="assistant">Sure, how many days is your trip?</message>
+    <message role="user">{{input}}</message>
+    <message role="assistant">
+    """;
 
-do {
-    Console.WriteLine("What would you like to do?");
+var templateFactory = new HandlebarsPromptTemplateFactory();
+var promptTemplateConfig = new PromptTemplateConfig()
+{
+    Template = hbprompt,
+    TemplateFormat = "handlebars",
+    Name = "CreateItinerary",
+};
+
+var function = kernel.CreateFunctionFromPrompt(promptTemplateConfig, templateFactory);
+var plugin = kernel.CreatePluginFromFunctions("TravelItinerary", [function]);
+kernel.Plugins.Add(plugin);
+
+var history = new ChatHistory();
+history.AddSystemMessage("Before providing destination recommendations, ask the user if they have a budget for their trip.");
+
+Console.WriteLine("Press enter to exit");
+Console.WriteLine("Assistant: How may I help you?");
+Console.Write("User: ");
+
+string input = Console.ReadLine()!;
+while (input != "") 
+{
+    history.AddUserMessage(input);
+    await GetReply();
+    Console.Write("User: ");
     input = Console.ReadLine()!;
+}
 
-    var intent = await kernel.InvokeAsync<string>(
-        prompts["GetIntent"], 
-        new() {{ "input",  input }}
+async Task GetReply() 
+{
+    ChatMessageContent reply = await chatCompletionService.GetChatMessageContentAsync(
+        history,
+        executionSettings: promptExecutionSettings,
+        kernel: kernel
     );
 
-    switch (intent) {
-        case "ConvertCurrency": 
-            var currencyText = await kernel.InvokeAsync<string>(
-                prompts["GetTargetCurrencies"], 
-                new() {{ "input",  input }}
-            );
-            
-            var currencyInfo = currencyText!.Split("|");
-            var result = await kernel.InvokeAsync("CurrencyConverter", 
-                "ConvertAmount", 
-                new() {
-                    {"targetCurrencyCode", currencyInfo[0]}, 
-                    {"baseCurrencyCode", currencyInfo[1]},
-                    {"amount", currencyInfo[2]}, 
-                }
-            );
-            Console.WriteLine(result);
-            break;
-        case "SuggestDestinations":
-            chatHistory.AppendLine("User:" + input);
-            var recommendations = await kernel.InvokePromptAsync(input!);
-            Console.WriteLine(recommendations);
-            break;
-        case "SuggestActivities":
-
-            var chatSummary = await kernel.InvokeAsync(
-                "ConversationSummaryPlugin", 
-                "SummarizeConversation", 
-                new() {{ "input", chatHistory.ToString() }});
-
-            var activities = await kernel.InvokePromptAsync(
-                input!,
-                new () {
-                    {"input", input},
-                    {"history", chatSummary},
-                    {"ToolCallBehavior", ToolCallBehavior.AutoInvokeKernelFunctions}
-            });
-
-            chatHistory.AppendLine("User:" + input);
-            chatHistory.AppendLine("Assistant:" + activities.ToString());
-
-            Console.WriteLine(activities);
-            break;
-        case "HelpfulPhrases":
-        case "Translate":
-            var autoInvokeResult = await kernel.InvokePromptAsync(input, new(settings));
-            Console.WriteLine(autoInvokeResult);
-            break;
-        default:
-            Console.WriteLine("Sure, I can help with that.");
-            var otherIntentResult = await kernel.InvokePromptAsync(input);
-            Console.WriteLine(otherIntentResult);
-            break;
-    }
-} 
-while (!string.IsNullOrWhiteSpace(input));
+    Console.WriteLine("Assistant: " + reply.ToString());
+    history.AddAssistantMessage(reply.ToString());
+}
