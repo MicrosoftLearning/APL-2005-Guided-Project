@@ -66,9 +66,9 @@ public class FlightBookingPlugin
 public class FlightModel
 {
     public int Id { get; set; }
-    public string Airline { get; set; }
-    public string Destination { get; set; }
-    public string DepartureDate { get; set; }
+    public required string Airline { get; set; }
+    public required string Destination { get; set; }
+    public required string DepartureDate { get; set; }
     public decimal Price { get; set; }
     public bool IsBooked { get; set; } = false; // Added to track booking status
 }
